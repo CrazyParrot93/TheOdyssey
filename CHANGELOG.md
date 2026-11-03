@@ -225,6 +225,26 @@ The giant's archetype changed from the gaunt elder to a massive, heavily muscled
   - The girdle sits on top of the cloth all round.
   - Calves are fuller, so the legs below the hem don't look spindly.
 
+## 5f. Voice and sound stutter, stake grip, fleeing victims, touch controls
+
+- **Voice stutter** (`GiantVoice.js`):
+  - The giant's voice chain went through the one-shot output, whose 8-second cleanup could disconnect a long roar or speech line mid-sound. Each chain now lives as long as its utterance and uses HRTF placement.
+  - Synthesized speech is legato: syllables flow into each other within a word, and plosives dip instead of hard-cutting to silence.
+- **Sound stutter** (`AudioEngine.js`):
+  - The listener position and orientation were scheduled with six `setTargetAtTime` events every frame and never cleared, so the audio thread's automation timeline grew without bound. They're now plain value writes.
+  - Bus volume changes cancel stale automation before gliding.
+- **Stake grip** (`CaveChapter.js`, `Character.js`): the 4.2 m stake was gripped at its middle, so half of it ran back through Odysseus. He now holds it ram-style, with the butt tucked at his right hip, the shaft running forward under his arm and the left hand forward on it, and a slight bob while moving.
+- **Seized men run** (`CaveChapter.js`): a victim no longer stands with his hands up.
+  - The chase: he bolts away from the giant (turned back into the open by the cave wall) while the giant runs him down at 5.2 m/s, re-targeting every half second. After 4.5 s the giant lunges regardless.
+  - In the fist: his legs keep pumping and his arms flail, driven every frame because he has left the crew list.
+- **Mobile controls** (`TouchControls.js`, `Input.js`, `style.css`):
+  - Controls: a floating move stick wherever the left thumb lands, drag-to-look on the right half, and buttons for attack, dodge, shield/aim, interact, crouch, sprint (toggle), weapon and lock-on, plus pause.
+  - Taps start the game and advance dialogue.
+  - Pointer lock is skipped on touch devices, prompts show the button glyphs, the movement hint is touch-specific, and the viewport no longer zooms.
+  - The controls only show during play.
+  - *Tested in a 375×812 phone viewport:* the stick walks Odysseus, a look drag turns the camera, and the attack button presses and releases.
+- *Verified:* no console errors on the cave, stealth, climax and escape checkpoints.
+
 ## 6. Still weak (next targets)
 1. **Animation:** the bodies are now continuous and anatomical, but motion is still procedural keyframes, so locomotion and attacks look stiff next to the new models. Next: motion-matching-style blending and hand IK on ropes and weapons.
 2. **Hands-on combat tuning:** every value is live in F6 and the logic is verified, but the "3 fights per input device" pass needs a human with a mouse and a gamepad.
