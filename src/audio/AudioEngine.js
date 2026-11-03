@@ -20,10 +20,14 @@ export class AudioEngine {
     if (this.ctx) { this.ctx.resume?.(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
+    // iPhone/iPad: Web Audio counts as "ambient" sound, which the ring/silent switch mutes. Asking for the
+    // playback category (Safari 17+) makes it behave like a video or music app.
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* not supported */ }
     // 'balanced' latency gives the audio thread a larger buffer, so heavy moments don't crackle or drop out.
     let ctx;
     try { ctx = new AC({ latencyHint: 'balanced' }); } catch { ctx = new AC(); }
     this.ctx = ctx;
+    this._unlock();
     this.master = ctx.createGain();
     this.muffle = ctx.createBiquadFilter(); this.muffle.type = 'lowpass'; this.muffle.frequency.value = 20000; this.muffle.Q.value = 0.5;
     this.comp = ctx.createDynamicsCompressor(); this.comp.threshold.value = -14; this.comp.ratio.value = 4; this.comp.attack.value = 0.005; this.comp.release.value = 0.2;
@@ -48,6 +52,31 @@ export class AudioEngine {
     this._startAmbience();
     this.applyVolumes();
     if (this._pendingAmb) this.setAmbience(this._pendingAmb, 1);
+  }
+
+  // Mobile Safari only lets audio start inside a user gesture, and suspends ("interrupted") the context when
+  // the page is backgrounded or a call comes in. Prime it now (we are inside the first tap), keep a silent
+  // looping <audio> element playing (older iOS: switches the session to playback, so the silent switch doesn't
+  // mute the game), and resume on every later tap, key or return to the page.
+  _unlock() {
+    const ctx = this.ctx;
+    const prime = () => {
+      if (ctx.state !== 'running') ctx.resume?.().catch(() => {});
+      try { const b = ctx.createBuffer(1, 1, 22050), s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(0); } catch { /* closed */ }
+      if (this._silent && this._silent.paused) this._silent.play().catch(() => {});
+    };
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+      const sr = 8000, n = 800, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+      const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+      w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+      const a = (this._silent = document.createElement('audio'));
+      a.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })); a.loop = true; a.setAttribute('playsinline', ''); a.preload = 'auto';
+    }
+    prime();
+    for (const ev of ['touchend', 'pointerdown', 'keydown', 'click']) addEventListener(ev, prime, { passive: true });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) prime(); });
+    ctx.addEventListener?.('statechange', () => { if (ctx.state === 'interrupted') this._wasInterrupted = true; });
   }
 
   get ready() { return !!this.ctx; }
@@ -202,7 +231,7 @@ export class AudioEngine {
 
   play(name, o = {}) {
     if (!this.ctx) return;
-    if (this.ctx.state !== 'running') { this.ctx.resume(); return; }
+    if (this.ctx.state !== 'running') { this.ctx.resume().catch(() => {}); return; }
     const fn = SFX[name];
     if (!fn || !this._allow(name)) return;
     const t = Math.max(this.now, o.at ?? 0);
