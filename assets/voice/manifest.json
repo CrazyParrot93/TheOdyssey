@@ -1,0 +1,5 @@
+{
+  "_readme": "Optional recorded voice for Polyphemus. Drop WAV/OGG files in this folder and list them here. Roars play at 0.62x speed and lines at 0.7x, through the same chain as the synthesized voice: pitch down, saturation, sub layer, distance filter, cave reverb. Keys in 'lines' must match the subtitle text exactly.",
+  "roars": [],
+  "lines": {}
+}
