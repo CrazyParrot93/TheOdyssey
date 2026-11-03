@@ -175,7 +175,15 @@ export class CaveChapter {
     if (this.cyclops.zone === z) { this.cyclops.render(alpha, dt); G.giantVoicePos = this.cyclops.headWorld(G.giantVoicePos || new THREE.Vector3()); }
     if (this.staffCarried) this._poseStaff();
     this._updateGuide(realDt);
-    if (this.held) this._holdUpright(this.held);
+    if (this.held) {
+      this._holdUpright(this.held);
+      const t = (this._heldT = (this._heldT || 0) + dt) * 13, sn = Math.sin(t), cs = Math.cos(t);
+      this.held.custom = { lLegX: sn * 0.95 - 0.2, rLegX: -sn * 0.95 - 0.2, lKnee: 0.4 + Math.max(0, cs) * 1.3, rKnee: 0.4 + Math.max(0, -cs) * 1.3,
+        lArmX: -sn * 1.1 - 0.4, rArmX: sn * 1.1 - 0.4, lArmZ: 0.35 + Math.sin(t * 0.7) * 0.3, rArmZ: -0.35 - Math.cos(t * 0.8) * 0.3, lElb: -1.3, rElb: -1.3,
+        lean: 0.15 + Math.sin(t * 0.5) * 0.1, twist: sn * 0.25, headX: -0.25, headY: Math.sin(t * 0.4) * 0.5 };
+      // he has left the crew list, so nothing else animates him now
+      this.held.model.update(dt, { speed: 0, custom: this.held.custom, customRate: 14 });
+    }
     for (const m of this.markers) { m.t += dt; m.mesh.material.opacity = Math.min(0.85, m.t / m.dur) * (0.6 + 0.4 * Math.sin(m.t * 18)); m.mesh.scale.setScalar(0.4 + 0.6 * Math.min(1, m.t / m.dur)); }
     if (this.eyeSmoke && Math.random() < dt * 8) this.fx.emit('wisp', this.cyclops.eyeWorld(_v), 1, { scale: 1.5 });
     const look = G.ui.menuOpen || G.ui.inDialogue ? null : G.input.consumeLook();
@@ -261,8 +269,11 @@ export class CaveChapter {
 
   _poseStaff() {
     const g = this.int.staff.group;
-    g.position.set(0.05, 1.05, 0.9);
-    g.rotation.set(0, -Math.PI / 2, 0.08 + Math.sin(G.engine.gameTime * 6) * 0.01 * Math.min(1, this.player.vel.length()));
+    // Held like a ram: the butt tucked against the right hip, the shaft running forward under the arm
+    // (it used to be gripped at its middle, so half of it ran back through his body).
+    const sp = Math.min(1, this.player.vel.length() / 4);
+    g.position.set(-0.13, 1.06 + Math.sin(G.engine.gameTime * 9) * 0.012 * sp, 1.95);
+    g.rotation.set(0, -Math.PI / 2, 0.06 + Math.sin(G.engine.gameTime * 6) * 0.012 * sp);
   }
 
   // =====================================================================
@@ -294,7 +305,7 @@ export class CaveChapter {
     G.input.lockPointer();
     this.crew.forEach((c) => c.follow());
     this.setObj('mountain', 'Find whoever keeps the fire on the mountain');
-    this.hint('move', `Move ${this.label('forward')}${this.label('left')}${this.label('back')}${this.label('right')} · Sprint ${this.label('sprint')} · Mouse to look`);
+    this.hint('move', G.touch ? 'Left thumb to move · drag on the right to look · » to sprint' : `Move ${this.label('forward')}${this.label('left')}${this.label('back')}${this.label('right')} · Sprint ${this.label('sprint')} · Mouse to look`);
     for (const [id, line] of D.BARKS.landing) { await this.say(id, line, 4); await s.wait(0.6); }
     G.state.lore.includes('maron') || G.state.lore.push('maron');
 
@@ -1241,22 +1252,38 @@ export class CaveChapter {
     G.ui.letterbox(true);
     const was = { mode: G.rig.mode };
     G.rig.setStatic(victim.pos.clone().add(new THREE.Vector3(victim.pos.x > 0 ? -7 : 7, 4, 6)), victim.pos.clone().setY(2.5), 0);
-    victim.state = 'idle'; victim.crouch = false; victim.custom = { lArmX: -2.4, rArmX: -2.4, headX: -0.5 }; victim.model.setExpression('fear', 1);
+    // He doesn't stand there with his hands up: he bolts, and the giant runs him down.
+    victim.crouch = false; victim.hidden = false; victim.custom = null; victim.model.setExpression('fear', 1);
+    const flee = () => {
+      const ax = victim.pos.x - g.pos.x, az = victim.pos.z - g.pos.z, al = Math.hypot(ax, az) || 1;
+      let fx = victim.pos.x + (ax / al) * 10, fz = victim.pos.z + (az / al) * 10;
+      const fr = Math.hypot(fx, fz); if (fr > 30) { fx *= 30 / fr; fz *= 30 / fr; }   // the cave wall turns him back into the open
+      victim.goTo(fx, fz, { run: true });
+    };
+    flee();
     for (const c of this.crew) if (c !== victim) c.model.setExpression('grief', 1);
     this.player.model.setExpression('grief', 0.8);
     const dl = this.int.dramaLight;
     if (this.zone === this.int) { dl.position.set(victim.pos.x * 0.6, 12, victim.pos.z * 0.6); dl.target.position.copy(victim.pos); dl.intensity = 900; }
-    const dx = victim.pos.x - g.pos.x, dz = victim.pos.z - g.pos.z, d = Math.hypot(dx, dz);
-    if (d > 4.5) await Promise.race([g.walkTo(victim.pos.x - (dx / d) * 3.8, victim.pos.z - (dz / d) * 3.8, 3.4), s.wait(6)]);
+    // the chase: he re-targets the runner every half second at a heavy run; after 4.5 s he lunges regardless
+    const c0 = s.t;
+    await s.until(() => {
+      const dx = victim.pos.x - g.pos.x, dz = victim.pos.z - g.pos.z, d = Math.hypot(dx, dz);
+      if (d < 4.6 || s.t - c0 > 4.5) return true;
+      if (!this._chaseT || s.t - this._chaseT > 0.5) { this._chaseT = s.t; g.setActivity('idle'); g.walkTo(victim.pos.x - (dx / d) * 3.6, victim.pos.z - (dz / d) * 3.6, 5.2); if (victim.state !== 'goto') flee(); }
+      dl.target.position.copy(victim.pos);
+      return false;
+    });
     g.stopWalk(); g.face(victim.pos.x, victim.pos.z);
-    await s.wait(0.6);
     g.setActivity('reach');
+    await s.wait(0.35);
+    victim.idle(); victim.vel.set(0, 0, 0);
     G.audio.play('grunt', { pos: g.headWorld(), pitch: 0.3, vol: 1.2 });
     await s.wait(0.8);
     this.crew.splice(this.crew.indexOf(victim), 1);
     g.model.rHand.attach(victim.root);
     if (victim.model.spear) victim.model.spear.visible = false;
-    this.held = victim;
+    this.held = victim; this._heldT = 0;
     g.setActivity('lift');
     G.audio.play('grunt', { pos: victim.pos, pitch: 1.3 });
     G.state.loseCrew(victim.id, cause);

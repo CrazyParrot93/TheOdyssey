@@ -393,7 +393,8 @@ export class Humanoid {
       b.lArmX -= 0.35 * c; b.rArmX -= 0.35 * c;
     }
     // carrying the stake: both arms forward
-    if (a.carry > 0.01) { const k = a.carry; b.rArmX = lerp(b.rArmX, -0.75, k); b.rElb = lerp(b.rElb, -1.3, k); b.lArmX = lerp(b.lArmX, -0.9, k); b.lElb = lerp(b.lElb, -1.0, k); b.lean += 0.1 * k; }
+    // carrying the stake ram-style: right hand on the butt at the hip, left hand forward along the shaft
+    if (a.carry > 0.01) { const k = a.carry; b.rArmX = lerp(b.rArmX, -0.3, k); b.rArmZ = lerp(b.rArmZ, -0.05, k); b.rElb = lerp(b.rElb, -1.05, k); b.lArmX = lerp(b.lArmX, -1.05, k); b.lArmY = lerp(b.lArmY, -0.35, k); b.lElb = lerp(b.lElb, -0.45, k); b.lean += 0.12 * k; b.twist += -0.12 * k; }
     if (a.block > 0.01) { b.shield = Math.max(b.shield, a.block); b.lArmX = lerp(b.lArmX, -1.0, a.block); b.lElb = lerp(b.lElb, -1.4, a.block); b.lean += 0.08 * a.block; b.bodyY -= 0.06 * a.block; }
     if (a.aim > 0.01) { b.bow = Math.max(b.bow, a.aim); b.lArmX = lerp(b.lArmX, -1.5, a.aim); b.lArmZ = lerp(b.lArmZ, 0.15, a.aim); b.lElb = lerp(b.lElb, -0.05, a.aim);
       const draw = st.draw || 0; b.rArmX = lerp(b.rArmX, -1.45, a.aim); b.rArmY = lerp(b.rArmY, 0.5 * draw, a.aim); b.rElb = lerp(b.rElb, -2.2 * draw - 0.3, a.aim); b.twist += -0.5 * a.aim; }

@@ -15,6 +15,8 @@ export const DEFAULT_BINDINGS = {
 };
 // Standard gamepad mapping
 const PAD = { 0: 'dodge', 1: 'crouch', 2: 'attack', 3: 'interact', 4: 'weapon', 5: 'lock', 6: 'alt', 7: 'alt', 8: 'journal', 9: 'pause', 10: 'sprint', 11: 'shout' };
+// glyphs on the on-screen buttons (TouchControls)
+export const TOUCH_LABELS = { attack: '⚔', dodge: '⤳', alt: '⛨', interact: 'E', crouch: '⇩', sprint: '»', weapon: '⇄', lock: '◎', pause: '❚❚' };
 export const PAD_LABELS = { dodge: 'A', crouch: 'B', attack: 'X', interact: 'Y', weapon: 'LB', lock: 'RB', alt: 'LT', journal: 'View', pause: 'Menu', sprint: 'L3', shout: 'R3' };
 
 export class Input {
@@ -26,6 +28,8 @@ export class Input {
     this.padDown = new Set();
     this.padPrev = [];
     this.padMove = { x: 0, y: 0 };
+    this.touchMove = { x: 0, y: 0 };   // on-screen stick (TouchControls)
+    this.touchDown = new Set();         // on-screen buttons held
     this.pad = null;
     this.device = 'kbm';
     this.capture = null;
@@ -78,7 +82,7 @@ export class Input {
   isDown(a) {
     const codes = this.bindings[a];
     if (codes) for (const c of codes) if (this.down.has(c)) return true;
-    return this.padDown.has(a);
+    return this.padDown.has(a) || this.touchDown.has(a);
   }
   // Buffered edge: true once if the action was pressed within `buffer` seconds.
   pressed(a, buffer = 0.18) {
@@ -96,7 +100,7 @@ export class Input {
     if (this.isDown('left')) x -= 1;
     if (this.isDown('forward')) y += 1;
     if (this.isDown('back')) y -= 1;
-    x += this.padMove.x; y += this.padMove.y;
+    x += this.padMove.x + this.touchMove.x; y += this.padMove.y + this.touchMove.y;
     const l = Math.hypot(x, y);
     if (l > 1) { x /= l; y /= l; }
     return { x, y };
@@ -144,7 +148,7 @@ export class Input {
   }
 
   lockPointer() {
-    if (document.pointerLockElement === this.el) return;
+    if (document.pointerLockElement === this.el || document.body.classList.contains('is-touch')) return;   // touch play never locks the pointer
     // Raw mouse input (no OS acceleration) where supported, plain pointer lock otherwise.
     try {
       const p = this.el.requestPointerLock({ unadjustedMovement: true });
@@ -156,6 +160,7 @@ export class Input {
 
   label(action) {
     if (this.device === 'pad') return PAD_LABELS[action] || action;
+    if (this.device === 'touch' || document.body.classList.contains('is-touch')) return TOUCH_LABELS[action] || action;
     const c = this.bindings[action]?.[0] || '?';
     return Input.codeName(c);
   }

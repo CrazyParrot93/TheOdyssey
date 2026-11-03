@@ -16,6 +16,7 @@ import { CameraRig } from './game/CameraRig.js';
 import { Flow } from './game/Flow.js';
 import { TitleScene } from './scenes/TitleScene.js';
 import { Humanoid } from './assets/Character.js';
+import { TouchControls, isTouchDevice } from './ui/TouchControls.js';
 
 const status = (t) => { const e = document.getElementById('boot-status'); if (e) e.textContent = t; };
 // Yield a frame for the boot status to paint; fall back to a timer when the tab is hidden (rAF paused).
@@ -61,6 +62,7 @@ async function boot() {
   G.quality = QUALITY_PRESETS[G.qualityName];
   const canvas = document.getElementById('game');
   G.input = new Input(canvas);
+  if (isTouchDevice()) G.touch = new TouchControls(G.input);
   G.input.setBindings(G.settings.bindings);
   G.engine = new Engine(canvas, G.quality);
   G.renderer = G.engine.renderer;
@@ -106,6 +108,7 @@ async function boot() {
   };
   addEventListener('keydown', start, { once: true });
   addEventListener('mousedown', start, { once: true });
+  addEventListener('touchend', start, { once: true });
   G.bus.on('padbutton', start);
 
   // Pause: Esc/P/Start, losing pointer lock mid-play, or the tab losing focus.

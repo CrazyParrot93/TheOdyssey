@@ -56,7 +56,7 @@ export class AudioEngine {
   applyVolumes() {
     if (!this.ctx) return;
     const s = G.settings, t = this.now;
-    const set = (key, param, v) => { if (Math.abs((this._vol[key] ?? -1) - v) < 0.002) return; this._vol[key] = v; param.setTargetAtTime(v, t, 0.03); };
+    const set = (key, param, v) => { if (Math.abs((this._vol[key] ?? -1) - v) < 0.002) return; this._vol[key] = v; param.cancelScheduledValues(t); param.setTargetAtTime(v, t, 0.03); };
     set('master', this.master.gain, s.masterVol);
     set('music', this.bus.music.gain, s.musicVol * this.duckLevel);
     set('sfx', this.bus.sfx.gain, s.sfxVol);
@@ -213,11 +213,12 @@ export class AudioEngine {
     if (!this.ctx) return;
     const l = this.ctx.listener, p = cam.position;
     const f = cam.getWorldDirection(_dir);
+    // Plain value writes: scheduling six setTargetAtTime events a frame, never cleared, grew the audio
+    // thread's automation timeline without bound and made the whole mix stutter over time.
     if (l.positionX) {
-      const t = this.now;
-      l.positionX.setTargetAtTime(p.x, t, 0.02); l.positionY.setTargetAtTime(p.y, t, 0.02); l.positionZ.setTargetAtTime(p.z, t, 0.02);
-      l.forwardX.setTargetAtTime(f.x, t, 0.02); l.forwardY.setTargetAtTime(f.y, t, 0.02); l.forwardZ.setTargetAtTime(f.z, t, 0.02);
-      l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0;
+      l.positionX.value = p.x; l.positionY.value = p.y; l.positionZ.value = p.z;
+      l.forwardX.value = f.x; l.forwardY.value = f.y; l.forwardZ.value = f.z;
+      if (!this._upSet) { l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0; this._upSet = true; }
     } else { l.setPosition(p.x, p.y, p.z); l.setOrientation(f.x, f.y, f.z, 0, 1, 0); }
   }
 

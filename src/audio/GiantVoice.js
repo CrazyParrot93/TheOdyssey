@@ -28,7 +28,7 @@ export class GiantVoice {
   }
 
   // Distance shaping: far = muffled and echoing, close = dry and enormous.
-  chain(pos, { dryBoost = 1 } = {}) {
+  chain(pos, { dryBoost = 1, life = 12 } = {}) {
     const a = this.a;
     const input = a.gain(1);
     const sat = a.ctx.createWaveShaper();
@@ -38,7 +38,7 @@ export class GiantVoice {
     const lp = a.filter('lowpass', 16000, 0.5);
     const dist = pos && G.camera ? G.camera.position.distanceTo(pos) : 12;
     lp.frequency.value = 16000 - 14500 * clamp01(dist / 70);
-    const out = a.out({ pos, bus: 'voice', ref: 14, rolloff: 0.85, vol: 1.15 * dryBoost });
+    const out = a.out({ pos, bus: 'voice', ref: 14, rolloff: 0.85, vol: 1.15 * dryBoost, hrtf: true, life });
     input.connect(sat); sat.connect(lp); lp.connect(out);
     const send = a.gain(0.25 + 0.55 * clamp01(dist / 45));
     lp.connect(send); send.connect(a.reverbIn);
@@ -54,7 +54,7 @@ export class GiantVoice {
     const inhale = scream ? 0.25 : rnd(0.55, 0.95), gap = scream ? 0.05 : rnd(0.12, 0.25);
     const t0 = a.now + 0.03, t1 = t0 + inhale + gap, tEnd = t1 + D;
     a.duckFor(inhale + gap + D + 0.8, 0.3, inhale * 0.6);
-    const input = this.chain(pos, { dryBoost: scream ? 1.25 : 1 });
+    const input = this.chain(pos, { dryBoost: scream ? 1.25 : 1, life: inhale + gap + D + 3 });
 
     if (this.samples?.roars?.length) {
       const s = ctx.createBufferSource(); s.buffer = this.samples.roars[(Math.random() * this.samples.roars.length) | 0];
@@ -134,7 +134,7 @@ export class GiantVoice {
     if (!ctx) return 0;
     if (this.samples?.lines?.[text]) {
       const s = ctx.createBufferSource(); s.buffer = this.samples.lines[text]; s.playbackRate.value = 0.7;
-      const input = this.chain(pos); s.connect(input); s.start();
+      const input = this.chain(pos, { life: s.buffer.duration / 0.7 + 3 }); s.connect(input); s.start();
       const d = s.buffer.duration / 0.7; a.duckFor(d + 0.4, 0.35, 0.2); return d;
     }
     const tokens = text.match(/[a-zA-Z']+|[.,!?;:…—-]/g) || [];
@@ -148,7 +148,7 @@ export class GiantVoice {
     const total = plan.reduce((n, p) => n + (p.pause || p.dur), 0);
     const t0 = a.now + 0.08, tEnd = t0 + total;
     a.duckFor(total + 0.6, 0.32, 0.15);
-    const input = this.chain(pos);
+    const input = this.chain(pos, { life: total + 3 });
     const shout = /[!]|[A-Z]{3,}/.test(text);
     const f0 = (shout ? 92 : 70) * rnd(0.95, 1.05);
     // Glottal source: two detuned saws + subharmonic, through three formant filters automated per syllable.
@@ -167,16 +167,16 @@ export class GiantVoice {
     this._sub(vca, t0, tEnd, 46, 0.6);
     let t = t0;
     for (const p of plan) {
-      if (p.pause) { vca.gain.setTargetAtTime(0.0001, t, 0.03); t += p.pause; continue; }
+      if (p.pause) { vca.gain.setTargetAtTime(p.pause > 0.1 ? 0.0001 : 0.25, t, 0.05); t += p.pause; continue; }
       const v = (p.syl.match(/[aeiouy]/) || ['a'])[0];
       const F = VOWELS[v] || VOWELS.a;
       forms.forEach((bp, k) => bp.frequency.setTargetAtTime(F[k] * TRACT, t, 0.03));
       const onset = p.syl[0];
       if (/[sfzhx]|sh|th/.test(onset)) this._noise(input, t, 0.09, 4200, 2, 0.35);
-      else if (/[ptkbdgcq]/.test(onset)) { this._noise(input, t, 0.03, 1600, 1.2, 0.55); vca.gain.setValueAtTime(0.0001, t); }
-      const att = /[mnl]/.test(onset) ? 0.06 : 0.025;
-      vca.gain.setTargetAtTime(shout ? 1.15 : 0.9, t + 0.02, att);
-      vca.gain.setTargetAtTime(0.35, t + p.dur * 0.7, 0.04);
+      else if (/[ptkbdgcq]/.test(onset)) { this._noise(input, t, 0.03, 1600, 1.2, 0.55); vca.gain.setTargetAtTime(0.12, t, 0.008); }
+      const att = /[mnl]/.test(onset) ? 0.05 : 0.03;
+      vca.gain.setTargetAtTime(shout ? 1.15 : 0.9, t + 0.025, att);
+      vca.gain.setTargetAtTime(0.6, t + p.dur * 0.75, 0.05);
       t += p.dur;
     }
     vca.gain.setTargetAtTime(0.0001, t, 0.08);
@@ -193,7 +193,7 @@ export class GiantVoice {
   // Chest-heaving breath; louder and drier as he nears the listener.
   breath(pos, lying = false) {
     const a = this.a; if (!a.ctx) return;
-    const input = this.chain(pos);
+    const input = this.chain(pos, { life: 5 });
     const t = a.now + 0.02, inT = lying ? 1.3 : 0.9, outT = lying ? 1.6 : 1.1;
     for (const [start, len, f0, f1, v] of [[0, inT, 300, 700, 0.35], [inT + 0.15, outT, 650, 260, 0.5]]) {
       const s = a.src('pink'), bp = a.filter('bandpass', f0, 1.4), g = a.gain();

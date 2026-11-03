@@ -140,6 +140,7 @@ export class Engine {
     G.audio?.update(realDt);
     G.music?.update(realDt);
     G.ui?.update(realDt);
+    G.touch?.update();
     G.post.render(realDt, dt);
     G.debugUI?.update(realDt);
   };
